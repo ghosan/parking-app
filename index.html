@@ -11,7 +11,7 @@
   <div id="app" class="max-w-6xl mx-auto">
     <h1 class="text-2xl sm:text-3xl font-bold text-center mb-4">📅 Gestor de plazas de parking</h1>
 
-    <!-- LOGIN (sin registro público) -->
+    <!-- LOGIN -->
     <div id="login-screen" class="space-y-4 max-w-md mx-auto">
       <div class="bg-white rounded-lg shadow p-4 sm:p-6">
         <h2 class="text-xl font-semibold text-center mb-3">Accede con tu cuenta</h2>
@@ -31,7 +31,7 @@
         <div id="current-datetime" class="bg-white border border-gray-200 rounded-lg shadow-sm p-2 text-center flex flex-col leading-tight w-full sm:w-auto"></div>
       </div>
 
-      <!-- Botón Panel admin (is_admin = TRUE) -->
+      <!-- Botón Panel admin -->
       <div id="admin-button-row" class="mb-3 hidden text-center">
         <button onclick="openAdminModal()" class="px-4 py-2 rounded bg-purple-600 hover:bg-purple-700 text-white">
           🛡️ Panel admin
@@ -72,7 +72,7 @@
     </div>
   </div>
 
-  <!-- Modal ADMIN -->
+  <!-- Modal ADMIN (solo edición/listado) -->
   <div id="admin-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-2">
     <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
       <div class="flex items-center justify-between mb-3">
@@ -80,61 +80,36 @@
         <button onclick="closeAdminModal()" class="text-gray-600 hover:text-black text-xl">✕</button>
       </div>
 
-      <div class="grid grid-cols-1 gap-6">
-        <!-- Crear USUARIO + PERFIL (UID automático) -->
-        <section class="bg-gray-50 rounded-lg p-4">
-          <h4 class="font-semibold mb-3">Crear usuario y perfil</h4>
-          <form id="admin-create-user-form" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input id="nu-email" type="email" required placeholder="Email (login)" class="border rounded px-3 py-2">
-            <input id="nu-password" type="text" required placeholder="Contraseña temporal" class="border rounded px-3 py-2">
-            <input id="nu-name" type="text" required placeholder="Nombre y apellidos" class="border rounded px-3 py-2 sm:col-span-2">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:col-span-2">
-              <label class="flex items-center gap-2 border rounded px-3 py-2">
-                <span class="min-w-[70px]">Rol</span>
-                <select id="nu-role" class="border rounded px-2 py-1 w-full">
-                  <option value="user">Autorizado</option>
-                  <option value="owner">Propietario</option>
-                </select>
-              </label>
-              <input id="nu-plaza" type="text" placeholder="Plaza (solo propietarios, ej. P047)" class="border rounded px-3 py-2">
-              <label class="flex items-center gap-2 border rounded px-3 py-2">
-                <input id="nu-is-admin" type="checkbox" class="h-4 w-4">
-                <span>Dar acceso de administrador</span>
-              </label>
-            </div>
-            <button class="sm:col-span-2 bg-green-600 hover:bg-green-700 text-white rounded px-4 py-2" type="submit">Crear</button>
-            <p class="text-xs text-gray-500 sm:col-span-2">
-              Crea el usuario en Authentication (UID automático) y su perfil en <code>public.profiles</code>.
-            </p>
-          </form>
-        </section>
+      <p class="text-sm text-gray-600 mb-4">
+        La creación de usuarios se hace en <b>Supabase → Authentication → Add user</b>.
+        Aquí puedes <b>editar</b> los perfiles existentes (nombre, rol, plaza, admin).
+      </p>
 
-        <!-- Listado y edición de perfiles -->
-        <section class="bg-gray-50 rounded-lg p-4">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-            <h4 class="font-semibold">Perfiles existentes</h4>
-            <input id="search-profile" type="text" placeholder="Buscar por nombre/email/plaza/rol/UID" class="border rounded px-3 py-2 w-full sm:w-96">
-          </div>
-          <div class="overflow-x-auto">
-            <table class="min-w-full text-sm">
-              <thead>
-                <tr class="text-left bg-white">
-                  <th class="px-3 py-2">Nombre</th>
-                  <th class="px-3 py-2">Email</th>
-                  <th class="px-3 py-2">Rol</th>
-                  <th class="px-3 py-2">Plaza</th>
-                  <th class="px-3 py-2">Admin</th>
-                  <th class="px-3 py-2 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="profiles-tbody"></tbody>
-            </table>
-          </div>
-          <p class="text-xs text-gray-500 mt-2">
-            La plaza es única para propietarios. Si duplicas, el guardado fallará (asegúrate de tener el índice único).
-          </p>
-        </section>
-      </div>
+      <!-- Listado y edición de perfiles -->
+      <section class="bg-gray-50 rounded-lg p-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+          <h4 class="font-semibold">Perfiles existentes</h4>
+          <input id="search-profile" type="text" placeholder="Buscar por nombre/email/plaza/rol/UID" class="border rounded px-3 py-2 w-full sm:w-96">
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="text-left bg-white">
+                <th class="px-3 py-2">Nombre</th>
+                <th class="px-3 py-2">Email</th>
+                <th class="px-3 py-2">Rol</th>
+                <th class="px-3 py-2">Plaza</th>
+                <th class="px-3 py-2">Admin</th>
+                <th class="px-3 py-2 text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="profiles-tbody"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">
+          La plaza es única para propietarios. Si duplicas, el guardado fallará (asegúrate de tener el índice único).
+        </p>
+      </section>
     </div>
   </div>
 
@@ -146,17 +121,17 @@
 
     /* ===== Estado ===== */
     let session = null;
-    let currentProfile = null;                  // { id, name, role, plaza_code, is_admin }
-    let profilesById = {};                      // id -> perfil
-    let allProfiles = [];                       // listado admin (con email)
+    let currentProfile = null;   // { id, name, role, plaza_code, is_admin }
+    let profilesById = {};       // id -> perfil
+    let allProfiles = [];        // listado admin (con email)
     let mesActual = new Date().getMonth();
     let anioActual = new Date().getFullYear();
     let clockInterval = null;
     let swipeBound = false;
 
-    /* ===== Helpers ===== */
     const isAdmin = () => !!currentProfile?.is_admin;
 
+    /* ===== Utilidades ===== */
     const getLocalDateString = (date) => {
       const y = date.getFullYear();
       const m = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -167,6 +142,25 @@
     const isPastISO = (iso) => iso < getLocalDateString(new Date());
     const formatFechaLarga = (iso) => { const [Y,M,D]=iso.split('-').map(Number); return new Date(Y,M-1,D).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); };
     const escapeHtml = (s) => (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+
+    /* === Chips compactos para acciones === */
+    const chipBase = "inline-flex items-center gap-1 rounded-full ring-1 px-2 sm:px-3 py-[6px] text-[11px] sm:text-xs transition shadow-sm";
+    const chipColors = {
+      blue:   chipBase + " bg-blue-50 text-blue-700 ring-blue-200 hover:bg-blue-100",
+      green:  chipBase + " bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100",
+      red:    chipBase + " bg-rose-50 text-rose-700 ring-rose-200 hover:bg-rose-100",
+      amber:  chipBase + " bg-amber-50 text-amber-800 ring-amber-200 hover:bg-amber-100",
+      gray:   chipBase + " bg-gray-50 text-gray-700 ring-gray-200 hover:bg-gray-100",
+      orange: chipBase + " bg-orange-50 text-orange-700 ring-orange-200 hover:bg-orange-100",
+    };
+    function chip(label, emoji, color, onclickJs){
+      const cls = chipColors[color] || chipColors.gray;
+      // En móvil solo emoji; en sm+ emoji + texto
+      return `<button onclick="${onclickJs}" class="${cls}" title="${label}" aria-label="${label}">
+                <span class="text-base leading-none">${emoji}</span>
+                <span class="hidden sm:inline">${label}</span>
+              </button>`;
+    }
 
     const toast = (msg, color="blue") => {
       const c = {blue:'bg-blue-600',green:'bg-green-600',red:'bg-red-600',yellow:'bg-yellow-400 text-black',orange:'bg-orange-600'}[color];
@@ -234,7 +228,7 @@
       const { data:{ user } } = await sb.auth.getUser();
       if(!user){ toast("Sin sesión activa","red"); return; }
 
-      // Perfil requerido
+      // Perfil requerido (no auto-crear)
       const { data:myp } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
       if(!myp){ toast("Tu cuenta no tiene perfil. Contacta con el administrador.","red"); await logout(); return; }
       currentProfile = myp;
@@ -308,7 +302,7 @@
         let cl=`border p-2 sm:p-2 rounded shadow bg-white flex flex-col items-center justify-between min-h-[78px] sm:min-h-[90px]`;
         if(esHoy && !esFinDeSemana) cl+=' bg-blue-100 border-blue-400';
 
-        let estado="",accion="";
+        let estado="",accionesHTML="";
         if(esFinDeSemana){
           cl+=' bg-gray-200'; estado="<span class='text-gray-500 text-[11px] sm:text-xs'>Fin de semana</span>";
         }else if(esPasado){
@@ -318,32 +312,33 @@
             const miPlaza=currentProfile.plaza_code;
             if(reservaDia[miPlaza]==='libre'){
               estado="<span class='text-green-600 font-semibold text-[11px] sm:text-xs'>LIBRE</span>";
-              accion=`<button onclick="cancelarLiberacion('${fStr}')" class='bg-yellow-500 text-black px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Cancelar</button>`;
+              accionesHTML = chip("Cancelar liberación","↩️","amber", `cancelarLiberacion('${fStr}')`);
             }else if(reservaDia[miPlaza] && reservaDia[miPlaza]!=='libre'){
               const reservador=profilesById[reservaDia[miPlaza]]?.name || 'N/A';
               estado=`Reservada por<br><b class='text-purple-700 text-[11px] sm:text-xs'>${reservador}</b>`;
               if(fStr>=hoyStr && (fStr!==hoyStr || new Date().getHours()<7)){
-                accion=`<button onclick="recuperarPlaza('${fStr}')" class='bg-red-500 text-white px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Recuperar</button>`;
+                accionesHTML = chip("Recuperar plaza","♻️","orange", `recuperarPlaza('${fStr}')`);
               }
             }else{
               estado=`<span class='text-gray-500 text-[11px] sm:text-xs'>Mi plaza</span>`;
-              if(miPlaza) accion=`<button onclick="liberarPlaza('${fStr}')" class='bg-green-600 text-white px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Liberar</button>`;
+              if(miPlaza) accionesHTML = chip("Liberar","🔓","green", `liberarPlaza('${fStr}')`);
             }
           }else{
             const plazaReservada=Object.keys(reservaDia).find(plaza=>reservaDia[plaza]===currentProfile.id);
             if(plazaReservada){
               cl+=' bg-green-100 border-green-400';
               estado=`¡Reservada!<br><b class='text-green-700 text-[11px] sm:text-xs'>${plazaReservada}</b>`;
-              accion=`<button onclick="cancelarReserva('${fStr}','${plazaReservada}')" class='bg-red-500 text-white px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Cancelar</button>`;
+              accionesHTML = chip("Cancelar","✖️","red", `cancelarReserva('${fStr}','${plazaReservada}')`);
             }else{
               const disponibles=Object.keys(reservaDia).filter(plaza=>reservaDia[plaza]==='libre');
               if(disponibles.length===1){
                 estado=`Disponible<br><b class='text-blue-700 text-[11px] sm:text-xs'>${disponibles[0]}</b>`;
-                accion=`<button onclick="reservar('${fStr}','${disponibles[0]}')" class='bg-blue-600 text-white px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Reservar</button>`;
+                accionesHTML = chip("Reservar","➕","blue", `reservar('${fStr}','${disponibles[0]}')`);
               }else if(disponibles.length>1){
                 estado=`<b class='text-blue-700 text-[11px] sm:text-xs'>${disponibles.length} plazas</b>`;
                 const plazasAttr=encodeURIComponent(JSON.stringify(disponibles));
-                accion=`<button data-fecha="${fStr}" data-plazas="${plazasAttr}" onclick="openModalFromAttr(this)" class='bg-blue-600 text-white px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Ver</button>`;
+                accionesHTML = chip("Ver opciones","👁️","blue", `openModalFromAttr(this)` )
+                               .replace("this", `{dataset:{fecha:'${fStr}',plazas:'${plazasAttr}'}}`); // truco para inline
               }else{
                 estado="<span class='text-gray-400 text-[11px] sm:text-xs'>No disponible</span>";
               }
@@ -352,8 +347,13 @@
         }
 
         cell.className=cl;
-        cell.innerHTML=`<div><strong class="text-sm sm:text-lg">${d}</strong><p class='mt-1'>${estado}</p></div>`;
-        if(accion) cell.innerHTML+=`<div class='w-full mt-1'>${accion}</div>`;
+        cell.innerHTML=`<div class="flex flex-col items-center">
+                          <strong class="text-sm sm:text-lg">${d}</strong>
+                          <p class='mt-1 text-center leading-snug'>${estado}</p>
+                        </div>`;
+        if(accionesHTML){
+          cell.innerHTML+=`<div class='w-full mt-1 flex items-center justify-center sm:justify-center gap-1'>${accionesHTML}</div>`;
+        }
         container.appendChild(cell);
       }
 
@@ -418,33 +418,13 @@
       document.getElementById('notification-log').innerHTML = rows || `<p class="text-center text-gray-500">No tienes notificaciones de los últimos 7 días.</p>`;
     }
 
-    // --- Rol -> habilitar/deshabilitar campo Plaza ---
-function syncPlazaField() {
-  const roleSel = document.getElementById('nu-role');
-  const plazaInput = document.getElementById('nu-plaza');
-  if (!roleSel || !plazaInput) return;
-  const isOwner = roleSel.value === 'owner';
-  plazaInput.disabled = !isOwner;
-  plazaInput.placeholder = isOwner
-    ? 'Plaza (solo propietarios, ej. P047)'
-    : 'No aplica para Autorizado';
-  if (!isOwner) plazaInput.value = '';
-}
-
-// Al cambiar el rol dentro del formulario admin
-document.addEventListener('change', (e) => {
-  if (e.target && e.target.id === 'nu-role') syncPlazaField();
-});
-
-    /* ===== Admin modal ===== */
+    /* ===== Admin modal (solo edición) ===== */
     function openAdminModal(){
-  const m = document.getElementById('admin-modal');
-  m.classList.remove('hidden');
-  m.classList.add('flex');
-  renderAdminProfiles();
-  // Ajusta el estado del campo Plaza según el rol seleccionado
-  syncPlazaField();
-}
+      const m = document.getElementById('admin-modal');
+      m.classList.remove('hidden');
+      m.classList.add('flex');
+      renderAdminProfiles();
+    }
     function closeAdminModal(){ document.getElementById('admin-modal').classList.add('hidden'); document.getElementById('admin-modal').classList.remove('flex'); }
     window.openAdminModal=openAdminModal; window.closeAdminModal=closeAdminModal;
 
@@ -505,59 +485,6 @@ document.addEventListener('change', (e) => {
       );
       drawProfilesTable(filtered);
     });
-
-    // Crear usuario + perfil (desde Edge Function)
-    document.getElementById('admin-create-user-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-
-  const email      = document.getElementById('nu-email').value.trim();
-  const password   = document.getElementById('nu-password').value.trim();
-  const name       = document.getElementById('nu-name').value.trim();
-  const role       = document.getElementById('nu-role').value;
-  const plazaInput = document.getElementById('nu-plaza');
-  const plaza      = (role === 'owner') ? plazaInput.value.trim() : null;
-  const makeAdmin  = document.getElementById('nu-is-admin').checked;
-
-  // Validaciones simples
-  if (!email || !password || !name) {
-    toast('Rellena email, contraseña y nombre', 'yellow'); return;
-  }
-  if (role === 'owner' && !plaza) {
-    toast('Para propietario indica la plaza', 'red'); return;
-  }
-
-  // Bloquea el botón mientras se crea
-  const btn = e.target.querySelector('button[type="submit"]');
-  const oldText = btn.innerText;
-  btn.disabled = true; btn.innerText = 'Creando...';
-
-  try {
-    // Llamada a la Edge Function (debe estar desplegada y con secret configurado)
-    const { data, error } = await sb.functions.invoke('admin_create_user', {
-      body: { email, password, name, role, plaza_code: plaza, is_admin: makeAdmin }
-    });
-
-    if (error) {
-      console.error('admin_create_user error:', error);
-      toast(error.message || 'No se pudo crear el usuario', 'red');
-    } else if (data && data.error) {
-      console.error('admin_create_user data.error:', data.error);
-      toast(String(data.error), 'red');
-    } else {
-      toast('Usuario y perfil creados', 'green');
-      e.target.reset();
-      // Asegura que el campo Plaza queda deshabilitado tras reset si rol vuelve a 'user'
-      syncPlazaField();
-      await renderAdminProfiles();
-    }
-  } catch (err) {
-    console.error('invoke exception:', err);
-    toast('Error de red o CORS al invocar la función', 'red');
-  } finally {
-    btn.disabled = false; btn.innerText = oldText;
-  }
-});
-
 
     /* ===== Inicio ===== */
     window.addEventListener('resize', ()=>renderCalendar());
