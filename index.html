@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gestor de Reservas de Parking</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 p-2 sm:p-4 font-sans">
+  <div id="app" class="max-w-6xl mx-auto">
+    <h1 class="text-2xl sm:text-3xl font-bold text-center mb-4">📅 Gestor de plazas de parking</h1>
+
+    <!-- LOGIN (sin registro público) -->
+    <div id="login-screen" class="space-y-4 max-w-md mx-auto">
+      <div class="bg-white rounded-lg shadow p-4 sm:p-6">
+        <h2 class="text-xl font-semibold text-center mb-3">Accede con tu cuenta</h2>
+        <form id="login-form" class="space-y-3">
+          <input id="email" type="email" required placeholder="Correo" class="w-full border rounded px-3 py-2">
+          <input id="password" type="password" required placeholder="Contraseña" class="w-full border rounded px-3 py-2">
+          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded py-2">Entrar</button>
+        </form>
+        <p class="text-xs text-gray-500 mt-3">Si no tienes usuario, pídeselo al administrador.</p>
+      </div>
+    </div>
+
+    <!-- PANTALLA PRINCIPAL -->
+    <div id="main-screen" class="hidden relative select-none">
+      <div class="flex flex-col sm:flex-row justify-center sm:justify-between items-center gap-3 mb-3">
+        <h2 id="welcome-text" class="text-lg sm:text-2xl font-bold text-center"></h2>
+        <div id="current-datetime" class="bg-white border border-gray-200 rounded-lg shadow-sm p-2 text-center flex flex-col leading-tight w-full sm:w-auto"></div>
+      </div>
+
+      <!-- Botón Panel admin (is_admin = TRUE) -->
+      <div id="admin-button-row" class="mb-3 hidden text-center">
+        <button onclick="openAdminModal()" class="px-4 py-2 rounded bg-purple-600 hover:bg-purple-700 text-white">
+          🛡️ Panel admin
+        </button>
+      </div>
+
+      <!-- Controles de mes -->
+      <div class="mb-4 text-center">
+        <div class="flex gap-2 sm:gap-4 mb-2 flex-wrap justify-center">
+          <button onclick="cambiarMes(-1)" class="w-1/3 sm:w-auto bg-gray-300 hover:bg-gray-400 text-black px-3 py-2 rounded text-sm">← Ant.</button>
+          <button onclick="irAlMesActual()" class="w-1/3 sm:w-auto bg-blue-300 hover:bg-blue-400 text-black px-3 py-2 rounded text-sm">Actual</button>
+          <button onclick="cambiarMes(1)" class="w-1/3 sm:w-auto bg-gray-300 hover:bg-gray-400 text-black px-3 py-2 rounded text-sm">Sig. →</button>
+        </div>
+        <h3 id="mes-anio" class="text-base sm:text-xl font-bold"></h3>
+        <p class="text-[11px] text-gray-500 mt-1 sm:hidden">Desliza a izquierda/derecha para cambiar de mes</p>
+      </div>
+
+      <!-- Calendario -->
+      <div id="calendar-grid" class="grid grid-cols-7 gap-1 sm:gap-2 text-center mb-8 touch-pan-y"></div>
+
+      <!-- Notificaciones -->
+      <div class="mt-8">
+        <h3 class="text-lg font-bold mb-4">🔔 Notificaciones</h3>
+        <div id="notification-log" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- Toast centrado -->
+    <div id="toast-container" class="fixed inset-0 pointer-events-none flex items-center justify-center z-50"></div>
+  </div>
+
+  <!-- Modal selección de plaza -->
+  <div id="plaza-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+      <h3 class="text-xl font-bold mb-4 text-center">Elige una plaza disponible</h3>
+      <div id="modal-plaza-options" class="space-y-2"></div>
+      <button onclick="closeModal()" class="mt-6 w-full bg-gray-300 hover:bg-gray-400 text-black py-2 rounded">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- Modal ADMIN -->
+  <div id="admin-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-2">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-xl font-bold">🛡️ Panel de administración</h3>
+        <button onclick="closeAdminModal()" class="text-gray-600 hover:text-black text-xl">✕</button>
+      </div>
+
+      <div class="grid grid-cols-1 gap-6">
+        <!-- Crear USUARIO + PERFIL (UID automático) -->
+        <section class="bg-gray-50 rounded-lg p-4">
+          <h4 class="font-semibold mb-3">Crear usuario y perfil</h4>
+          <form id="admin-create-user-form" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="nu-email" type="email" required placeholder="Email (login)" class="border rounded px-3 py-2">
+            <input id="nu-password" type="text" required placeholder="Contraseña temporal" class="border rounded px-3 py-2">
+            <input id="nu-name" type="text" required placeholder="Nombre y apellidos" class="border rounded px-3 py-2 sm:col-span-2">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:col-span-2">
+              <label class="flex items-center gap-2 border rounded px-3 py-2">
+                <span class="min-w-[70px]">Rol</span>
+                <select id="nu-role" class="border rounded px-2 py-1 w-full">
+                  <option value="user">Autorizado</option>
+                  <option value="owner">Propietario</option>
+                </select>
+              </label>
+              <input id="nu-plaza" type="text" placeholder="Plaza (solo propietarios, ej. P047)" class="border rounded px-3 py-2">
+              <label class="flex items-center gap-2 border rounded px-3 py-2">
+                <input id="nu-is-admin" type="checkbox" class="h-4 w-4">
+                <span>Dar acceso de administrador</span>
+              </label>
+            </div>
+            <button class="sm:col-span-2 bg-green-600 hover:bg-green-700 text-white rounded px-4 py-2" type="submit">Crear</button>
+            <p class="text-xs text-gray-500 sm:col-span-2">
+              Crea el usuario en Authentication (UID automático) y su perfil en <code>public.profiles</code>.
+            </p>
+          </form>
+        </section>
+
+        <!-- Listado y edición de perfiles -->
+        <section class="bg-gray-50 rounded-lg p-4">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+            <h4 class="font-semibold">Perfiles existentes</h4>
+            <input id="search-profile" type="text" placeholder="Buscar por nombre/email/plaza/rol/UID" class="border rounded px-3 py-2 w-full sm:w-96">
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="text-left bg-white">
+                  <th class="px-3 py-2">Nombre</th>
+                  <th class="px-3 py-2">Email</th>
+                  <th class="px-3 py-2">Rol</th>
+                  <th class="px-3 py-2">Plaza</th>
+                  <th class="px-3 py-2">Admin</th>
+                  <th class="px-3 py-2 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="profiles-tbody"></tbody>
+            </table>
+          </div>
+          <p class="text-xs text-gray-500 mt-2">
+            La plaza es única para propietarios. Si duplicas, el guardado fallará (asegúrate de tener el índice único).
+          </p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ===== SUPABASE: pega tus claves ===== */
+    const SUPABASE_URL = "https://bjizxkvsyktysunxoiyv.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqaXp4a3ZzeWt0eXN1bnhvaXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwOTYwMzYsImV4cCI6MjA3MDY3MjAzNn0.6H3xeSey0Cnkmdj0S_qZaX7uGPPwQrCRw8jjAzYdjT0";
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    /* ===== Estado ===== */
+    let session = null;
+    let currentProfile = null;                  // { id, name, role, plaza_code, is_admin }
+    let profilesById = {};                      // id -> perfil
+    let allProfiles = [];                       // listado admin (con email)
+    let mesActual = new Date().getMonth();
+    let anioActual = new Date().getFullYear();
+    let clockInterval = null;
+    let swipeBound = false;
+
+    /* ===== Helpers ===== */
+    const isAdmin = () => !!currentProfile?.is_admin;
+
+    const getLocalDateString = (date) => {
+      const y = date.getFullYear();
+      const m = (date.getMonth() + 1).toString().padStart(2, '0');
+      const d = date.getDate().toString().padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+    const isWeekendISO = (iso) => { const [Y,M,D]=iso.split('-').map(Number); const wd=new Date(Y,M-1,D).getDay(); return wd===0||wd===6; };
+    const isPastISO = (iso) => iso < getLocalDateString(new Date());
+    const formatFechaLarga = (iso) => { const [Y,M,D]=iso.split('-').map(Number); return new Date(Y,M-1,D).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); };
+    const escapeHtml = (s) => (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+
+    const toast = (msg, color="blue") => {
+      const c = {blue:'bg-blue-600',green:'bg-green-600',red:'bg-red-600',yellow:'bg-yellow-400 text-black',orange:'bg-orange-600'}[color];
+      const el = document.createElement('div');
+      el.className = `pointer-events-auto max-w-md w-[92%] sm:w-auto text-center ${c} text-white px-4 py-3 rounded-xl shadow-2xl ring-1 ring-black/10`;
+      el.innerHTML = `<div class="font-semibold">${msg}</div>`;
+      document.getElementById('toast-container').appendChild(el);
+      setTimeout(()=>{el.style.opacity='0'; el.style.transform='scale(0.98)'; setTimeout(()=>el.remove(),400);},2600);
+    };
+
+    /* ===== BD ===== */
+    const db = {
+      // Reservas
+      async getReservationsForMonth(year, month) {
+        const from = `${year}-${String(month+1).padStart(2,'0')}-01`;
+        const last = new Date(year, month+1, 0).getDate();
+        const to   = `${year}-${String(month+1).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
+        const { data, error } = await sb.from('reservations')
+          .select('date, plaza_code, status, user_id')
+          .gte('date', from).lte('date', to);
+        if (error) { console.error(error); return {}; }
+        const map={}; for(const r of data){ if(!map[r.date]) map[r.date]={}; map[r.date][r.plaza_code]=r.status==='libre'?'libre':r.user_id; }
+        return map;
+      },
+      async setLibre(date, plaza) { return await sb.from('reservations').upsert({date, plaza_code:plaza, status:'libre', user_id:null}).select(); },
+      async cancelarLibre(date, plaza){ return await sb.from('reservations').delete().eq('date',date).eq('plaza_code',plaza).eq('status','libre').select(); },
+      async reservar(date, plaza, uid){ return await sb.from('reservations').update({status:'reservada', user_id:uid}).eq('date',date).eq('plaza_code',plaza).eq('status','libre').select(); },
+      async cancelarReserva(date, plaza, uid){ return await sb.from('reservations').update({status:'libre', user_id:null}).eq('date',date).eq('plaza_code',plaza).eq('user_id',uid).select(); },
+      async getReserva(date, plaza){ const { data } = await sb.from('reservations').select('user_id,status').eq('date',date).eq('plaza_code',plaza).maybeSingle(); return data||null; },
+      async deleteReserva(date, plaza){ return await sb.from('reservations').delete().eq('date',date).eq('plaza_code',plaza).select(); },
+
+      // Eventos
+      async logEvent(e){ const { error } = await sb.from('events').insert(e); if(error) console.error(error); },
+      async getEventsLast7Days(){ const cutoff=new Date(Date.now()-7*24*60*60*1000).toISOString(); const { data }=await sb.from('events').select('*').gte('created_at',cutoff).order('created_at',{ascending:false}); return data||[]; },
+
+      // Perfiles
+      async loadProfilesDict(){ const { data }=await sb.from('profiles').select('id,name,role,plaza_code,is_admin'); const dict={}; (data||[]).forEach(p=>dict[p.id]=p); return dict; },
+
+      // Admin list (vía RPC para obtener email)
+      async loadProfilesWithEmail(){ const { data, error } = await sb.rpc('admin_profiles_with_email'); if(error){toast(error.message,'red'); return [];} return data||[]; },
+      async updateProfile(p){ const { error } = await sb.from('profiles').update({ name:p.name, role:p.role, plaza_code:p.plaza_code||null, is_admin: !!p.is_admin }).eq('id',p.id); return { error }; },
+    };
+
+    /* ===== Login / Logout ===== */
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) { toast(error.message || "Error al entrar", "red"); return; }
+      session = data.session;
+      await afterAuth();
+    });
+
+    async function logout(){
+      await sb.auth.signOut();
+      session=null; currentProfile=null; profilesById={};
+      document.getElementById('main-screen').classList.add('hidden');
+      document.getElementById('login-screen').classList.remove('hidden');
+      closeAdminModal();
+    }
+    window.logout = logout;
+
+    async function afterAuth(){
+      const { data:{ user } } = await sb.auth.getUser();
+      if(!user){ toast("Sin sesión activa","red"); return; }
+
+      // Perfil requerido
+      const { data:myp } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+      if(!myp){ toast("Tu cuenta no tiene perfil. Contacta con el administrador.","red"); await logout(); return; }
+      currentProfile = myp;
+
+      profilesById = await db.loadProfilesDict();
+
+      // Mostrar/ocultar botón admin
+      document.getElementById('admin-button-row').classList.toggle('hidden', !isAdmin());
+
+      // Encabezado
+      const welcome = document.getElementById('welcome-text');
+      if ((currentProfile?.role || '').toLowerCase() === 'owner') {
+        welcome.textContent = `${currentProfile.name} (Plaza: ${currentProfile.plaza_code || '—'})${isAdmin() ? ' · Admin' : ''}`;
+      } else {
+        welcome.textContent = `${currentProfile.name}${isAdmin() ? ' (Admin)' : ''}`;
+      }
+
+      // UI
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('main-screen').classList.remove('hidden');
+
+      updateDateTime();
+      if (clockInterval) clearInterval(clockInterval);
+      clockInterval = setInterval(updateDateTime, 1000);
+      renderCalendar();
+    }
+
+    /* ===== Header reloj + Salir ===== */
+    function updateDateTime(){
+      const now=new Date();
+      const day=String(now.getDate()).padStart(2,'0');
+      const month=String(now.getMonth()+1).padStart(2,'0');
+      const year=String(now.getFullYear()).slice(-2);
+      const hours=String(now.getHours()).padStart(2,'0');
+      const minutes=String(now.getMinutes()).padStart(2,'0');
+      document.getElementById('current-datetime').innerHTML=`
+        <span class="text-gray-600 text-xs sm:text-sm font-semibold">${day}/${month}/${year}</span>
+        <span class="text-gray-900 text-xl sm:text-2xl font-bold">${hours}:${minutes}</span>
+        <button onclick="logout()" class="mt-1 w-full text-xs sm:text-sm bg-red-500 hover:bg-red-600 text-white rounded py-1 px-2">🚪 Salir</button>
+      `;
+    }
+
+    /* ===== Calendario ===== */
+    function cambiarMes(inc){ mesActual+=inc; if(mesActual<0){mesActual=11;anioActual--;} else if(mesActual>11){mesActual=0;anioActual++;} renderCalendar(); }
+    function irAlMesActual(){ const hoy=new Date(); mesActual=hoy.getMonth(); anioActual=hoy.getFullYear(); renderCalendar(); }
+    window.cambiarMes=cambiarMes; window.irAlMesActual=irAlMesActual;
+
+    async function renderCalendar(){
+      const container=document.getElementById('calendar-grid');
+      container.innerHTML='';
+      const reservas=await db.getReservationsForMonth(anioActual, mesActual);
+
+      const start=new Date(anioActual,mesActual,1), end=new Date(anioActual,mesActual+1,0);
+      const primerDia = start.getDay()===0 ? 6 : start.getDay()-1;
+      document.getElementById('mes-anio').textContent=start.toLocaleString('es-ES',{month:'long',year:'numeric'});
+      const diasSemana=window.innerWidth<640?['L','M','X','J','V','S','D']:['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+      diasSemana.forEach(d=>container.appendChild(Object.assign(document.createElement('div'),{className:'font-bold text-[11px] sm:text-sm',textContent:d})));
+      for(let i=0;i<primerDia;i++) container.appendChild(document.createElement('div'));
+
+      const hoyStr=getLocalDateString(new Date());
+      for(let d=1; d<=end.getDate(); d++){
+        const date=new Date(anioActual,mesActual,d);
+        const fStr=getLocalDateString(date);
+        const reservaDia=reservas[fStr]||{};
+        const cell=document.createElement('div');
+
+        const esHoy=fStr===hoyStr;
+        const esFinDeSemana=date.getDay()===0 || date.getDay()===6;
+        const esPasado=isPastISO(fStr);
+
+        let cl=`border p-2 sm:p-2 rounded shadow bg-white flex flex-col items-center justify-between min-h-[78px] sm:min-h-[90px]`;
+        if(esHoy && !esFinDeSemana) cl+=' bg-blue-100 border-blue-400';
+
+        let estado="",accion="";
+        if(esFinDeSemana){
+          cl+=' bg-gray-200'; estado="<span class='text-gray-500 text-[11px] sm:text-xs'>Fin de semana</span>";
+        }else if(esPasado){
+          cl+=' opacity-80'; estado="<span class='text-gray-400 text-[11px] sm:text-xs'>Día pasado</span>";
+        }else{
+          if((currentProfile?.role||'').toLowerCase()==="owner"){
+            const miPlaza=currentProfile.plaza_code;
+            if(reservaDia[miPlaza]==='libre'){
+              estado="<span class='text-green-600 font-semibold text-[11px] sm:text-xs'>LIBRE</span>";
+              accion=`<button onclick="cancelarLiberacion('${fStr}')" class='bg-yellow-500 text-black px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Cancelar</button>`;
+            }else if(reservaDia[miPlaza] && reservaDia[miPlaza]!=='libre'){
+              const reservador=profilesById[reservaDia[miPlaza]]?.name || 'N/A';
+              estado=`Reservada por<br><b class='text-purple-700 text-[11px] sm:text-xs'>${reservador}</b>`;
+              if(fStr>=hoyStr && (fStr!==hoyStr || new Date().getHours()<7)){
+                accion=`<button onclick="recuperarPlaza('${fStr}')" class='bg-red-500 text-white px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Recuperar</button>`;
+              }
+            }else{
+              estado=`<span class='text-gray-500 text-[11px] sm:text-xs'>Mi plaza</span>`;
+              if(miPlaza) accion=`<button onclick="liberarPlaza('${fStr}')" class='bg-green-600 text-white px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Liberar</button>`;
+            }
+          }else{
+            const plazaReservada=Object.keys(reservaDia).find(plaza=>reservaDia[plaza]===currentProfile.id);
+            if(plazaReservada){
+              cl+=' bg-green-100 border-green-400';
+              estado=`¡Reservada!<br><b class='text-green-700 text-[11px] sm:text-xs'>${plazaReservada}</b>`;
+              accion=`<button onclick="cancelarReserva('${fStr}','${plazaReservada}')" class='bg-red-500 text-white px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Cancelar</button>`;
+            }else{
+              const disponibles=Object.keys(reservaDia).filter(plaza=>reservaDia[plaza]==='libre');
+              if(disponibles.length===1){
+                estado=`Disponible<br><b class='text-blue-700 text-[11px] sm:text-xs'>${disponibles[0]}</b>`;
+                accion=`<button onclick="reservar('${fStr}','${disponibles[0]}')" class='bg-blue-600 text-white px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Reservar</button>`;
+              }else if(disponibles.length>1){
+                estado=`<b class='text-blue-700 text-[11px] sm:text-xs'>${disponibles.length} plazas</b>`;
+                const plazasAttr=encodeURIComponent(JSON.stringify(disponibles));
+                accion=`<button data-fecha="${fStr}" data-plazas="${plazasAttr}" onclick="openModalFromAttr(this)" class='bg-blue-600 text-white px-2 py-1 text-[11px] sm:text-xs rounded mt-1 w-full'>Ver</button>`;
+              }else{
+                estado="<span class='text-gray-400 text-[11px] sm:text-xs'>No disponible</span>";
+              }
+            }
+          }
+        }
+
+        cell.className=cl;
+        cell.innerHTML=`<div><strong class="text-sm sm:text-lg">${d}</strong><p class='mt-1'>${estado}</p></div>`;
+        if(accion) cell.innerHTML+=`<div class='w-full mt-1'>${accion}</div>`;
+        container.appendChild(cell);
+      }
+
+      if(!swipeBound){ attachSwipeHandlers(); swipeBound=true; }
+      renderNotifications();
+    }
+
+    /* ===== Gestos swipe ===== */
+    function attachSwipeHandlers(){
+      const area=document.getElementById('main-screen');
+      let sx=0,sy=0,dx=0,dy=0,touching=false; const TH=50,V=40;
+      area.addEventListener('touchstart',e=>{ if(document.getElementById('plaza-modal').classList.contains('flex'))return; const t=e.touches[0]; sx=t.clientX; sy=t.clientY; touching=true; },{passive:true});
+      area.addEventListener('touchmove',e=>{ if(!touching)return; const t=e.touches[0]; dx=t.clientX-sx; dy=t.clientY-sy; },{passive:true});
+      area.addEventListener('touchend',()=>{ if(!touching)return; if(Math.abs(dy)<=V&&Math.abs(dx)>=TH){ dx<0?cambiarMes(1):cambiarMes(-1);} touching=false; dx=dy=0; });
+    }
+
+    /* ===== Modal plazas ===== */
+    function openModal(fecha, plazasDisponibles){
+      document.getElementById('plaza-modal').classList.remove('hidden');
+      document.getElementById('plaza-modal').classList.add('flex');
+      const c=document.getElementById('modal-plaza-options'); c.innerHTML='';
+      plazasDisponibles.forEach(plaza=>{
+        const b=document.createElement('button');
+        b.className='w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded';
+        b.textContent=`Reservar Plaza ${plaza}`;
+        b.onclick=()=>reservar(fecha, plaza);
+        c.appendChild(b);
+      });
+    }
+    function closeModal(){ const m=document.getElementById('plaza-modal'); m.classList.add('hidden'); m.classList.remove('flex'); }
+    function openModalFromAttr(btn){ try{ const fecha=btn.dataset.fecha; const plazas=JSON.parse(decodeURIComponent(btn.dataset.plazas||'[]')); openModal(fecha, plazas);}catch(e){ console.error('openModalFromAttr',e); toast('No se pudo abrir la lista de plazas','red'); } }
+    window.openModalFromAttr=openModalFromAttr;
+
+    /* ===== Acciones ===== */
+    async function guardarYRenderizar(evt,msg,col){ if(evt) await db.logEvent(evt); toast(msg,col); closeModal(); renderCalendar(); }
+    async function liberarPlaza(fecha){ if(isWeekendISO(fecha)) return toast("No se puede liberar en fin de semana","red"); if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red"); await db.setLibre(fecha,currentProfile.plaza_code); await guardarYRenderizar({type:'LIBERADA',date:fecha,plaza_code:currentProfile.plaza_code,owner_id:currentProfile.id,user_id:null}, `Has liberado tu plaza ${currentProfile.plaza_code} para el ${formatFechaLarga(fecha)}.`, "green"); }
+    async function cancelarLiberacion(fecha){ if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red"); await db.cancelarLibre(fecha,currentProfile.plaza_code); await guardarYRenderizar({type:'LIBERACION_CANCELADA',date:fecha,plaza_code:currentProfile.plaza_code,owner_id:currentProfile.id,user_id:null}, `Has cancelado la liberación de tu plaza ${currentProfile.plaza_code} del ${formatFechaLarga(fecha)}.`, "yellow"); }
+    async function recuperarPlaza(fecha){ if(isWeekendISO(fecha)) return toast("No aplica en fin de semana","red"); if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red"); if(fecha===getLocalDateString(new Date()) && new Date().getHours()>=7) return toast("No puedes recuperar la plaza para hoy después de las 07:00h","red"); const row=await db.getReserva(fecha,currentProfile.plaza_code); const reservado=row?.user_id||null; await db.deleteReserva(fecha,currentProfile.plaza_code); await guardarYRenderizar(reservado?{type:'RECUPERADA_PROPIETARIO',date:fecha,plaza_code:currentProfile.plaza_code,owner_id:currentProfile.id,user_id:reservado}:null, `Has recuperado tu plaza ${currentProfile.plaza_code} para el ${formatFechaLarga(fecha)}.`, "orange"); }
+    async function reservar(fecha,plaza){ if(isWeekendISO(fecha)) return toast("No se puede reservar en fin de semana","red"); if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red"); const {data}=await db.reservar(fecha,plaza,currentProfile.id); if(!data||!data.length) return toast("La plaza ya no está disponible","red"); const owner=Object.values(profilesById).find(p=>p.role==='owner'&&p.plaza_code===plaza); await guardarYRenderizar({type:'RESERVADA',date:fecha,plaza_code:plaza,owner_id:owner?.id||'',user_id:currentProfile.id}, `Has reservado la plaza ${plaza} de ${owner?.name||'propietario'} para el ${formatFechaLarga(fecha)}.`, "blue"); }
+    async function cancelarReserva(fecha,plaza){ if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red"); const {data}=await db.cancelarReserva(fecha,plaza,currentProfile.id); if(!data||!data.length) return toast("Nada que cancelar","yellow"); const owner=Object.values(profilesById).find(p=>p.role==='owner'&&p.plaza_code===plaza); await guardarYRenderizar({type:'CANCELADA_USUARIO',date:fecha,plaza_code:plaza,owner_id:owner?.id||'',user_id:currentProfile.id}, `Has cancelado tu reserva de la plaza ${plaza} del ${formatFechaLarga(fecha)}.`, "yellow"); }
+    window.liberarPlaza=liberarPlaza; window.cancelarLiberacion=cancelarLiberacion; window.recuperarPlaza=recuperarPlaza; window.reservar=reservar; window.cancelarReserva=cancelarReserva;
+
+    /* ===== Notificaciones ===== */
+    async function renderNotifications(){
+      const all=await db.getEventsLast7Days();
+      const filtered = (currentProfile.role==='owner') ? all.filter(e=>e.owner_id===currentProfile.id) : all.filter(e=>e.user_id===currentProfile.id);
+      const ownerName=id=>profilesById[id]?.name||'propietario';
+      const userName=id=>profilesById[id]?.name||'usuario';
+      const rows = filtered.map(e=>{
+        const fechaSimple=new Date(e.date).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+        let icon='ℹ️', cls='border-gray-400', text='Evento desconocido.';
+        if(e.type==='LIBERADA'){icon='🟢';cls='border-green-500';text=`Has liberado tu plaza <b>${e.plaza_code}</b> para el ${fechaSimple}.`;}
+        else if(e.type==='LIBERACION_CANCELADA'){icon='🟡';cls='border-yellow-500';text=`Has cancelado la liberación de tu plaza <b>${e.plaza_code}</b> del ${fechaSimple}.`;}
+        else if(e.type==='RESERVADA'){icon='🚗';cls='border-blue-500';text=`<b>${userName(e.user_id)}</b> ha reservado la plaza <b>${e.plaza_code}</b> de <b>${ownerName(e.owner_id)}</b> para el ${fechaSimple}.`;}
+        else if(e.type==='CANCELADA_USUARIO'){icon='↩️';cls='border-yellow-500';text=`<b>${userName(e.user_id)}</b> ha cancelado su reserva de la plaza <b>${e.plaza_code}</b> para el ${fechaSimple}.`;}
+        else if(e.type==='RECUPERADA_PROPIETARIO'){icon='⚠️';cls='border-red-500';text=`<b>${ownerName(e.owner_id)}</b> ha recuperado su plaza <b>${e.plaza_code}</b>. Tu reserva para el ${fechaSimple} ha sido <b>cancelada</b>.`;}
+        return `<div class="flex items-start p-3 bg-white rounded-lg shadow-sm border-l-4 ${cls}">
+                  <div class="text-xl mr-3 sm:mr-4 pt-1">${icon}</div>
+                  <div class="flex-grow"><p class="text-sm text-gray-800">${text}</p></div>
+                </div>`;
+      }).join('');
+      document.getElementById('notification-log').innerHTML = rows || `<p class="text-center text-gray-500">No tienes notificaciones de los últimos 7 días.</p>`;
+    }
+
+    // --- Rol -> habilitar/deshabilitar campo Plaza ---
+function syncPlazaField() {
+  const roleSel = document.getElementById('nu-role');
+  const plazaInput = document.getElementById('nu-plaza');
+  if (!roleSel || !plazaInput) return;
+  const isOwner = roleSel.value === 'owner';
+  plazaInput.disabled = !isOwner;
+  plazaInput.placeholder = isOwner
+    ? 'Plaza (solo propietarios, ej. P047)'
+    : 'No aplica para Autorizado';
+  if (!isOwner) plazaInput.value = '';
+}
+
+// Al cambiar el rol dentro del formulario admin
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'nu-role') syncPlazaField();
+});
+
+    /* ===== Admin modal ===== */
+    function openAdminModal(){
+  const m = document.getElementById('admin-modal');
+  m.classList.remove('hidden');
+  m.classList.add('flex');
+  renderAdminProfiles();
+  // Ajusta el estado del campo Plaza según el rol seleccionado
+  syncPlazaField();
+}
+    function closeAdminModal(){ document.getElementById('admin-modal').classList.add('hidden'); document.getElementById('admin-modal').classList.remove('flex'); }
+    window.openAdminModal=openAdminModal; window.closeAdminModal=closeAdminModal;
+
+    async function renderAdminProfiles(){ allProfiles = await db.loadProfilesWithEmail(); drawProfilesTable(allProfiles); }
+    function drawProfilesTable(rows){
+      const tb=document.getElementById('profiles-tbody');
+      tb.innerHTML = rows.map(p=>`
+        <tr class="border-b bg-white">
+          <td class="px-3 py-2"><input data-id="${p.id}" data-field="name" value="${escapeHtml(p.name||'')}" class="border rounded px-2 py-1 w-full"/></td>
+          <td class="px-3 py-2"><span class="text-gray-700">${escapeHtml(p.email||'')}</span><div class="text-[11px] text-gray-400">UID ${p.id.slice(0,8)}…</div></td>
+          <td class="px-3 py-2">
+            <select data-id="${p.id}" data-field="role" class="border rounded px-2 py-1 w-full">
+              <option value="user"  ${p.role==='user'?'selected':''}>user</option>
+              <option value="owner" ${p.role==='owner'?'selected':''}>owner</option>
+            </select>
+          </td>
+          <td class="px-3 py-2"><input data-id="${p.id}" data-field="plaza_code" value="${escapeHtml(p.plaza_code||'')}" class="border rounded px-2 py-1 w-full" placeholder="P047"/></td>
+          <td class="px-3 py-2">
+            <label class="inline-flex items-center gap-2">
+              <input type="checkbox" data-id="${p.id}" data-field="is_admin" ${p.is_admin ? 'checked' : ''} class="h-4 w-4">
+              <span class="text-xs">Admin</span>
+            </label>
+          </td>
+          <td class="px-3 py-2 text-right"><button class="px-3 py-1 rounded bg-blue-600 text-white" onclick="saveProfile('${p.id}')">Guardar</button></td>
+        </tr>`).join('');
+    }
+    async function saveProfile(id){
+      const inputs=document.querySelectorAll(`[data-id="${id}"]`);
+      const obj={id};
+      inputs.forEach(i=>{
+        if(i.type==='checkbox'){ obj[i.dataset.field]=i.checked; }
+        else { obj[i.dataset.field]=i.value.trim(); }
+      });
+      if(obj.role==='owner' && !obj.plaza_code){ return toast("Para 'owner' indica plaza","red"); }
+      const { error }=await db.updateProfile(obj);
+      if(error) toast(error.message || "No se pudo guardar (¿plaza duplicada?)","red");
+      else{
+        toast("Perfil guardado","green");
+        await renderAdminProfiles();
+        if(currentProfile.id===id){
+          currentProfile.role=obj.role; currentProfile.plaza_code=obj.plaza_code; currentProfile.is_admin=!!obj.is_admin;
+          document.getElementById('admin-button-row').classList.toggle('hidden', !isAdmin());
+          renderCalendar();
+        }
+      }
+    }
+    window.saveProfile=saveProfile;
+
+    // Buscador en la tabla
+    document.getElementById('search-profile').addEventListener('input', e=>{
+      const q=e.target.value.toLowerCase().trim();
+      const filtered=allProfiles.filter(p=>
+        (p.name||'').toLowerCase().includes(q) ||
+        (p.email||'').toLowerCase().includes(q) ||
+        (p.plaza_code||'').toLowerCase().includes(q) ||
+        (p.role||'').toLowerCase().includes(q) ||
+        (p.id||'').toLowerCase().includes(q)
+      );
+      drawProfilesTable(filtered);
+    });
+
+    // Crear usuario + perfil (desde Edge Function)
+    document.getElementById('admin-create-user-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const email      = document.getElementById('nu-email').value.trim();
+  const password   = document.getElementById('nu-password').value.trim();
+  const name       = document.getElementById('nu-name').value.trim();
+  const role       = document.getElementById('nu-role').value;
+  const plazaInput = document.getElementById('nu-plaza');
+  const plaza      = (role === 'owner') ? plazaInput.value.trim() : null;
+  const makeAdmin  = document.getElementById('nu-is-admin').checked;
+
+  // Validaciones simples
+  if (!email || !password || !name) {
+    toast('Rellena email, contraseña y nombre', 'yellow'); return;
+  }
+  if (role === 'owner' && !plaza) {
+    toast('Para propietario indica la plaza', 'red'); return;
+  }
+
+  // Bloquea el botón mientras se crea
+  const btn = e.target.querySelector('button[type="submit"]');
+  const oldText = btn.innerText;
+  btn.disabled = true; btn.innerText = 'Creando...';
+
+  try {
+    // Llamada a la Edge Function (debe estar desplegada y con secret configurado)
+    const { data, error } = await sb.functions.invoke('admin_create_user', {
+      body: { email, password, name, role, plaza_code: plaza, is_admin: makeAdmin }
+    });
+
+    if (error) {
+      console.error('admin_create_user error:', error);
+      toast(error.message || 'No se pudo crear el usuario', 'red');
+    } else if (data && data.error) {
+      console.error('admin_create_user data.error:', data.error);
+      toast(String(data.error), 'red');
+    } else {
+      toast('Usuario y perfil creados', 'green');
+      e.target.reset();
+      // Asegura que el campo Plaza queda deshabilitado tras reset si rol vuelve a 'user'
+      syncPlazaField();
+      await renderAdminProfiles();
+    }
+  } catch (err) {
+    console.error('invoke exception:', err);
+    toast('Error de red o CORS al invocar la función', 'red');
+  } finally {
+    btn.disabled = false; btn.innerText = oldText;
+  }
+});
+
+
+    /* ===== Inicio ===== */
+    window.addEventListener('resize', ()=>renderCalendar());
+    document.getElementById('plaza-modal').addEventListener('click', e=>{ if(e.target.id==='plaza-modal') closeModal(); });
+  </script>
+</body>
+</html>
