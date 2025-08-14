@@ -284,7 +284,7 @@
       const start=new Date(anioActual,mesActual,1), end=new Date(anioActual,mesActual+1,0);
       const primerDia = start.getDay()===0 ? 6 : start.getDay()-1;
       document.getElementById('mes-anio').textContent=start.toLocaleString('es-ES',{month:'long',year:'numeric'});
-      const diasSemana=window.innerWidth<1920?['L','M','X','J','V','S','D']:['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+      const diasSemana=window.innerWidth<640?['L','M','X','J','V','S','D']:['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
       diasSemana.forEach(d=>container.appendChild(Object.assign(document.createElement('div'),{className:'font-bold text-[11px] sm:text-sm',textContent:d})));
       for(let i=0;i<primerDia;i++) container.appendChild(document.createElement('div'));
 
