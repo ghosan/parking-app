@@ -149,6 +149,43 @@
     const SUPABASE_URL = "https://bjizxkvsyktysunxoiyv.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqaXp4a3ZzeWt0eXN1bnhvaXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwOTYwMzYsImV4cCI6MjA3MDY3MjAzNn0.6H3xeSey0Cnkmdj0S_qZaX7uGPPwQrCRw8jjAzYdjT0";
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// === Realtime ===
+let rtRes = null;   // canal reservas
+let rtEvt = null;   // canal eventos
+let rtTimer = null; // para agrupar varios eventos seguidos
+
+function scheduleRealtimeRefresh() {
+  // Agrupa eventos rápidos y refresca una vez
+  if (rtTimer) clearTimeout(rtTimer);
+  rtTimer = setTimeout(() => {
+    renderCalendar();
+    renderNotifications();
+  }, 250);
+}
+
+function startRealtime() {
+  stopRealtime();
+
+  rtRes = sb.channel('realtime:public:reservations')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, (_payload) => {
+      scheduleRealtimeRefresh();
+    })
+    .subscribe();
+
+  rtEvt = sb.channel('realtime:public:events')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, (_payload) => {
+      scheduleRealtimeRefresh();
+    })
+    .subscribe();
+}
+
+function stopRealtime() {
+  if (rtRes) { sb.removeChannel(rtRes); rtRes = null; }
+  if (rtEvt) { sb.removeChannel(rtEvt); rtEvt = null; }
+  if (rtTimer) { clearTimeout(rtTimer); rtTimer = null; }
+}
+
+
 
     /* ===== SVG ICONS ===== */
     function svgIcon(name, cls="w-5 h-5"){
@@ -260,6 +297,7 @@
     });
 
     async function logout(){
+      logout()
       await sb.auth.signOut();
       session=null; currentProfile=null; profilesById={};
       document.getElementById('main-screen').classList.add('hidden');
@@ -294,6 +332,8 @@
       if (clockInterval) clearInterval(clockInterval);
       clockInterval = setInterval(updateDateTime, 1000);
       renderCalendar();
+
+      afterAuth()
 
       /* pinta iconos de leyenda (móvil) */
       document.querySelectorAll('[data-i]').forEach(el=>{ el.innerHTML = svgIcon(el.getAttribute('data-i')); });
