@@ -85,7 +85,6 @@
         Aquí puedes <b>editar</b> los perfiles existentes (nombre, rol, plaza, admin).
       </p>
 
-      <!-- Listado y edición de perfiles -->
       <section class="bg-gray-50 rounded-lg p-4">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
           <h4 class="font-semibold">Perfiles existentes</h4>
@@ -115,9 +114,24 @@
 
   <script>
     /* ===== SUPABASE: pega tus claves ===== */
-    const SUPABASE_URL = "https://bjizxkvsyktysunxoiyv.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqaXp4a3ZzeWt0eXN1bnhvaXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwOTYwMzYsImV4cCI6MjA3MDY3MjAzNn0.6H3xeSey0Cnkmdj0S_qZaX7uGPPwQrCRw8jjAzYdjT0";
+    const SUPABASE_URL = "https://TU-PROYECTO.supabase.co";     // <-- tu URL
+    const SUPABASE_ANON_KEY = "TU-ANON-PUBLIC-KEY";              // <-- tu anon key
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    /* ===== Realtime (Broadcast) para refrescar otras sesiones ===== */
+    let syncChannel = null, syncTimer = null;
+    function startSync() {
+      stopSync();
+      syncChannel = sb
+        .channel('parking-sync', { config: { broadcast: { self: false } } })
+        .on('broadcast', { event: 'calendar_changed' }, () => {
+          if (syncTimer) clearTimeout(syncTimer);
+          syncTimer = setTimeout(() => { renderCalendar(); }, 250);
+        })
+        .subscribe();
+    }
+    function stopSync(){ if (syncChannel){ sb.removeChannel(syncChannel); syncChannel=null; } if(syncTimer){ clearTimeout(syncTimer); syncTimer=null; } }
+    function notifySync(){ if (!syncChannel) return; syncChannel.send({ type:'broadcast', event:'calendar_changed', payload:{at:Date.now()} }); }
 
     /* ===== Estado ===== */
     let session = null;
@@ -141,6 +155,16 @@
     const isWeekendISO = (iso) => { const [Y,M,D]=iso.split('-').map(Number); const wd=new Date(Y,M-1,D).getDay(); return wd===0||wd===6; };
     const isPastISO = (iso) => iso < getLocalDateString(new Date());
     const formatFechaLarga = (iso) => { const [Y,M,D]=iso.split('-').map(Number); return new Date(Y,M-1,D).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); };
+
+    // Nueva regla: corte a las 22:00 del día anterior para recuperar plaza
+    const recoverCutoffForDate = (iso) => {
+      const [Y,M,D] = iso.split('-').map(Number);
+      const cutoff = new Date(Y, M-1, D);
+      cutoff.setDate(cutoff.getDate() - 1);
+      cutoff.setHours(22, 0, 0, 0); // 22:00 del día anterior
+      return cutoff;
+    };
+
     const escapeHtml = (s) => (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 
     /* === Chips compactos para acciones === */
@@ -155,7 +179,6 @@
     };
     function chip(label, emoji, color, onclickJs){
       const cls = chipColors[color] || chipColors.gray;
-      // En móvil solo emoji; en sm+ emoji + texto
       return `<button onclick="${onclickJs}" class="${cls}" title="${label}" aria-label="${label}">
                 <span class="text-base leading-none">${emoji}</span>
                 <span class="hidden sm:inline">${label}</span>
@@ -173,7 +196,6 @@
 
     /* ===== BD ===== */
     const db = {
-      // Reservas
       async getReservationsForMonth(year, month) {
         const from = `${year}-${String(month+1).padStart(2,'0')}-01`;
         const last = new Date(year, month+1, 0).getDate();
@@ -192,17 +214,24 @@
       async getReserva(date, plaza){ const { data } = await sb.from('reservations').select('user_id,status').eq('date',date).eq('plaza_code',plaza).maybeSingle(); return data||null; },
       async deleteReserva(date, plaza){ return await sb.from('reservations').delete().eq('date',date).eq('plaza_code',plaza).select(); },
 
-      // Eventos
       async logEvent(e){ const { error } = await sb.from('events').insert(e); if(error) console.error(error); },
       async getEventsLast7Days(){ const cutoff=new Date(Date.now()-7*24*60*60*1000).toISOString(); const { data }=await sb.from('events').select('*').gte('created_at',cutoff).order('created_at',{ascending:false}); return data||[]; },
 
-      // Perfiles
       async loadProfilesDict(){ const { data }=await sb.from('profiles').select('id,name,role,plaza_code,is_admin'); const dict={}; (data||[]).forEach(p=>dict[p.id]=p); return dict; },
-
-      // Admin list (vía RPC para obtener email)
       async loadProfilesWithEmail(){ const { data, error } = await sb.rpc('admin_profiles_with_email'); if(error){toast(error.message,'red'); return [];} return data||[]; },
       async updateProfile(p){ const { error } = await sb.from('profiles').update({ name:p.name, role:p.role, plaza_code:p.plaza_code||null, is_admin: !!p.is_admin }).eq('id',p.id); return { error }; },
     };
+
+    /* ===== Email (Edge Function) ===== */
+    async function sendEmailForEvent(evt){
+      try {
+        // evt: { type, date, plaza_code, owner_id, user_id, ... }
+        // La function decide a quién enviar según el tipo
+        await sb.functions.invoke('notify-email', { body: { ...evt, actor_id: currentProfile?.id || null } });
+      } catch (e) {
+        console.warn('Fallo al enviar email (no bloquea la app):', e?.message || e);
+      }
+    }
 
     /* ===== Login / Logout ===== */
     document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -217,6 +246,7 @@
 
     async function logout(){
       await sb.auth.signOut();
+      stopSync();
       session=null; currentProfile=null; profilesById={};
       document.getElementById('main-screen').classList.add('hidden');
       document.getElementById('login-screen').classList.remove('hidden');
@@ -228,17 +258,14 @@
       const { data:{ user } } = await sb.auth.getUser();
       if(!user){ toast("Sin sesión activa","red"); return; }
 
-      // Perfil requerido (no auto-crear)
       const { data:myp } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
       if(!myp){ toast("Tu cuenta no tiene perfil. Contacta con el administrador.","red"); await logout(); return; }
       currentProfile = myp;
 
       profilesById = await db.loadProfilesDict();
 
-      // Mostrar/ocultar botón admin
       document.getElementById('admin-button-row').classList.toggle('hidden', !isAdmin());
 
-      // Encabezado
       const welcome = document.getElementById('welcome-text');
       if ((currentProfile?.role || '').toLowerCase() === 'owner') {
         welcome.textContent = `${currentProfile.name} (Plaza: ${currentProfile.plaza_code || '—'})${isAdmin() ? ' · Admin' : ''}`;
@@ -246,7 +273,6 @@
         welcome.textContent = `${currentProfile.name}${isAdmin() ? ' (Admin)' : ''}`;
       }
 
-      // UI
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('main-screen').classList.remove('hidden');
 
@@ -254,6 +280,7 @@
       if (clockInterval) clearInterval(clockInterval);
       clockInterval = setInterval(updateDateTime, 1000);
       renderCalendar();
+      startSync();
     }
 
     /* ===== Header reloj + Salir ===== */
@@ -316,7 +343,8 @@
             }else if(reservaDia[miPlaza] && reservaDia[miPlaza]!=='libre'){
               const reservador=profilesById[reservaDia[miPlaza]]?.name || 'N/A';
               estado=`Reservada por<br><b class='text-purple-700 text-[11px] sm:text-xs'>${reservador}</b>`;
-              if(fStr>=hoyStr && (fStr!==hoyStr || new Date().getHours()<7)){
+              // NUEVA regla: corte 22:00 del día anterior
+              if (new Date() < recoverCutoffForDate(fStr)) {
                 accionesHTML = chip("Recuperar plaza","♻️","orange", `recuperarPlaza('${fStr}')`);
               }
             }else{
@@ -338,7 +366,7 @@
                 estado=`<b class='text-blue-700 text-[11px] sm:text-xs'>${disponibles.length} plazas</b>`;
                 const plazasAttr=encodeURIComponent(JSON.stringify(disponibles));
                 accionesHTML = chip("Ver opciones","👁️","blue", `openModalFromAttr(this)` )
-                               .replace("this", `{dataset:{fecha:'${fStr}',plazas:'${plazasAttr}'}}`); // truco para inline
+                               .replace("this", `{dataset:{fecha:'${fStr}',plazas:'${plazasAttr}'}}`);
               }else{
                 estado="<span class='text-gray-400 text-[11px] sm:text-xs'>No disponible</span>";
               }
@@ -388,12 +416,80 @@
     window.openModalFromAttr=openModalFromAttr;
 
     /* ===== Acciones ===== */
-    async function guardarYRenderizar(evt,msg,col){ if(evt) await db.logEvent(evt); toast(msg,col); closeModal(); renderCalendar(); }
-    async function liberarPlaza(fecha){ if(isWeekendISO(fecha)) return toast("No se puede liberar en fin de semana","red"); if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red"); await db.setLibre(fecha,currentProfile.plaza_code); await guardarYRenderizar({type:'LIBERADA',date:fecha,plaza_code:currentProfile.plaza_code,owner_id:currentProfile.id,user_id:null}, `Has liberado tu plaza ${currentProfile.plaza_code} para el ${formatFechaLarga(fecha)}.`, "green"); }
-    async function cancelarLiberacion(fecha){ if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red"); await db.cancelarLibre(fecha,currentProfile.plaza_code); await guardarYRenderizar({type:'LIBERACION_CANCELADA',date:fecha,plaza_code:currentProfile.plaza_code,owner_id:currentProfile.id,user_id:null}, `Has cancelado la liberación de tu plaza ${currentProfile.plaza_code} del ${formatFechaLarga(fecha)}.`, "yellow"); }
-    async function recuperarPlaza(fecha){ if(isWeekendISO(fecha)) return toast("No aplica en fin de semana","red"); if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red"); if(fecha===getLocalDateString(new Date()) && new Date().getHours()>=7) return toast("No puedes recuperar la plaza para hoy después de las 07:00h","red"); const row=await db.getReserva(fecha,currentProfile.plaza_code); const reservado=row?.user_id||null; await db.deleteReserva(fecha,currentProfile.plaza_code); await guardarYRenderizar(reservado?{type:'RECUPERADA_PROPIETARIO',date:fecha,plaza_code:currentProfile.plaza_code,owner_id:currentProfile.id,user_id:reservado}:null, `Has recuperado tu plaza ${currentProfile.plaza_code} para el ${formatFechaLarga(fecha)}.`, "orange"); }
-    async function reservar(fecha,plaza){ if(isWeekendISO(fecha)) return toast("No se puede reservar en fin de semana","red"); if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red"); const {data}=await db.reservar(fecha,plaza,currentProfile.id); if(!data||!data.length) return toast("La plaza ya no está disponible","red"); const owner=Object.values(profilesById).find(p=>p.role==='owner'&&p.plaza_code===plaza); await guardarYRenderizar({type:'RESERVADA',date:fecha,plaza_code:plaza,owner_id:owner?.id||'',user_id:currentProfile.id}, `Has reservado la plaza ${plaza} de ${owner?.name||'propietario'} para el ${formatFechaLarga(fecha)}.`, "blue"); }
-    async function cancelarReserva(fecha,plaza){ if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red"); const {data}=await db.cancelarReserva(fecha,plaza,currentProfile.id); if(!data||!data.length) return toast("Nada que cancelar","yellow"); const owner=Object.values(profilesById).find(p=>p.role==='owner'&&p.plaza_code===plaza); await guardarYRenderizar({type:'CANCELADA_USUARIO',date:fecha,plaza_code:plaza,owner_id:owner?.id||'',user_id:currentProfile.id}, `Has cancelado tu reserva de la plaza ${plaza} del ${formatFechaLarga(fecha)}.`, "yellow"); }
+    async function guardarYRenderizar(evt,msg,col){
+      if (evt) {
+        await db.logEvent(evt);
+        sendEmailForEvent(evt);  // <-- envía email (no bloquea la UI si falla)
+      }
+      toast(msg,col);
+      closeModal();
+      renderCalendar();
+      notifySync();              // avisa a otras sesiones
+    }
+
+    async function liberarPlaza(fecha){
+      if(isWeekendISO(fecha)) return toast("No se puede liberar en fin de semana","red");
+      if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red");
+      await db.setLibre(fecha,currentProfile.plaza_code);
+      await guardarYRenderizar(
+        {type:'LIBERADA',date:fecha,plaza_code: currentProfile.plaza_code, owner_id: currentProfile.id, user_id: null},
+        `Has liberado tu plaza ${currentProfile.plaza_code} para el ${formatFechaLarga(fecha)}.`, "green"
+      );
+    }
+
+    async function cancelarLiberacion(fecha){
+      if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red");
+      await db.cancelarLibre(fecha,currentProfile.plaza_code);
+      await guardarYRenderizar(
+        {type:'LIBERACION_CANCELADA',date:fecha,plaza_code: currentProfile.plaza_code, owner_id: currentProfile.id, user_id: null},
+        `Has cancelado la liberación de tu plaza ${currentProfile.plaza_code} del ${formatFechaLarga(fecha)}.`, "yellow"
+      );
+    }
+
+    async function recuperarPlaza(fecha){
+      if(isWeekendISO(fecha)) return toast("No aplica en fin de semana","red");
+      if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red");
+
+      // NUEVA REGLA: no se puede recuperar si ya han pasado las 22:00 del día anterior
+      if (new Date() >= recoverCutoffForDate(fecha)) {
+        return toast("No puedes recuperar la plaza a partir de las 22:00h del día anterior.", "red");
+      }
+
+      const row=await db.getReserva(fecha,currentProfile.plaza_code);
+      const reservadoPorId=row?.user_id||null;
+      await db.deleteReserva(fecha,currentProfile.plaza_code);
+
+      await guardarYRenderizar(
+        reservadoPorId ? { type:'RECUPERADA_PROPIETARIO', date:fecha, plaza_code: currentProfile.plaza_code, owner_id: currentProfile.id, user_id: reservadoPorId } : null,
+        `Has recuperado tu plaza ${currentProfile.plaza_code} para el ${formatFechaLarga(fecha)}.`,
+        "orange"
+      );
+    }
+
+    async function reservar(fecha,plaza){
+      if(isWeekendISO(fecha)) return toast("No se puede reservar en fin de semana","red");
+      if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red");
+      const {data}=await db.reservar(fecha,plaza,currentProfile.id);
+      if(!data||!data.length) return toast("La plaza ya no está disponible","red");
+      const owner=Object.values(profilesById).find(p=>p.role==='owner'&&p.plaza_code===plaza);
+      await guardarYRenderizar(
+        { type:'RESERVADA', date:fecha, plaza_code: plaza, owner_id: owner?.id||'', user_id: currentProfile.id },
+        `Has reservado la plaza ${plaza} de ${owner?.name||'propietario'} para el ${formatFechaLarga(fecha)}.`,
+        "blue"
+      );
+    }
+
+    async function cancelarReserva(fecha,plaza){
+      if(isPastISO(fecha)) return toast("No puedes realizar acciones en fechas pasadas","red");
+      const {data}=await db.cancelarReserva(fecha,plaza,currentProfile.id);
+      if(!data||!data.length) return toast("Nada que cancelar","yellow");
+      const owner=Object.values(profilesById).find(p=>p.role==='owner'&&p.plaza_code===plaza);
+      await guardarYRenderizar(
+        { type:'CANCELADA_USUARIO', date:fecha, plaza_code: plaza, owner_id: owner?.id||'', user_id: currentProfile.id },
+        `Has cancelado tu reserva de la plaza ${plaza} del ${formatFechaLarga(fecha)}.`,
+        "yellow"
+      );
+    }
     window.liberarPlaza=liberarPlaza; window.cancelarLiberacion=cancelarLiberacion; window.recuperarPlaza=recuperarPlaza; window.reservar=reservar; window.cancelarReserva=cancelarReserva;
 
     /* ===== Notificaciones ===== */
@@ -489,6 +585,8 @@
     /* ===== Inicio ===== */
     window.addEventListener('resize', ()=>renderCalendar());
     document.getElementById('plaza-modal').addEventListener('click', e=>{ if(e.target.id==='plaza-modal') closeModal(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) renderCalendar(); });
   </script>
 </body>
 </html>
+
