@@ -6,18 +6,6 @@
   <title>Gestor de Reservas de Parking</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <style>
-  /* Móvil y tablets: SOLO iconos. Escritorio (>=1024px y con ratón): icono + texto */
-  .only-icon .label,
-  .only-icon .label-block { display: none; }
-
-  /* Mostrar texto solo en pantallas grandes y con hover (evita táctiles grandes) */
-  @media (hover: hover) and (min-width: 1024px) {
-    .only-icon .label { display: inline; }
-    .only-icon .label-block { display: block; }
-  }
-</style>
-
 </head>
 <body class="bg-gray-100 text-gray-800 p-2 sm:p-4 font-sans">
   <div id="app" class="max-w-6xl mx-auto">
@@ -62,29 +50,10 @@
       </div>
 
       <!-- Calendario -->
-      <div id="calendar-grid" class="grid grid-cols-7 gap-1 sm:gap-2 text-center mb-4 touch-pan-y"></div>
-
-      <!-- LEYENDA (solo móvil) -->
-      <div class="sm:hidden mb-6">
-        <h4 class="font-semibold mb-2 flex items-center gap-2"><span>ℹ️</span> Leyenda</h4>
-        <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="p"></span> Mi plaza</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="check"></span> Libre</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="pin"></span> Reservada</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="ban"></span> No disponible</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="calendar"></span> Fin de semana</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="clock"></span> Día pasado</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="unlock"></span> Liberar</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="uturn"></span> Cancelar liberación</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="refresh"></span> Recuperar</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="plus"></span> Reservar</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="x"></span> Cancelar reserva</div>
-          <div class="flex items-center gap-2"><span class="inline-block w-5 h-5" data-i="eye"></span> Ver opciones</div>
-        </div>
-      </div>
+      <div id="calendar-grid" class="grid grid-cols-7 gap-1 sm:gap-2 text-center mb-8 touch-pan-y"></div>
 
       <!-- Notificaciones -->
-      <div class="mt-4">
+      <div class="mt-8">
         <h3 class="text-lg font-bold mb-4">🔔 Notificaciones</h3>
         <div id="notification-log" class="space-y-3"></div>
       </div>
@@ -149,62 +118,6 @@
     const SUPABASE_URL = "https://bjizxkvsyktysunxoiyv.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqaXp4a3ZzeWt0eXN1bnhvaXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwOTYwMzYsImV4cCI6MjA3MDY3MjAzNn0.6H3xeSey0Cnkmdj0S_qZaX7uGPPwQrCRw8jjAzYdjT0";
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-// === Realtime ===
-let rtRes = null;   // canal reservas
-let rtEvt = null;   // canal eventos
-let rtTimer = null; // para agrupar varios eventos seguidos
-
-function scheduleRealtimeRefresh() {
-  // Agrupa eventos rápidos y refresca una vez
-  if (rtTimer) clearTimeout(rtTimer);
-  rtTimer = setTimeout(() => {
-    renderCalendar();
-    renderNotifications();
-  }, 250);
-}
-
-function startRealtime() {
-  stopRealtime();
-
-  rtRes = sb.channel('realtime:public:reservations')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, (_payload) => {
-      scheduleRealtimeRefresh();
-    })
-    .subscribe();
-
-  rtEvt = sb.channel('realtime:public:events')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, (_payload) => {
-      scheduleRealtimeRefresh();
-    })
-    .subscribe();
-}
-
-function stopRealtime() {
-  if (rtRes) { sb.removeChannel(rtRes); rtRes = null; }
-  if (rtEvt) { sb.removeChannel(rtEvt); rtEvt = null; }
-  if (rtTimer) { clearTimeout(rtTimer); rtTimer = null; }
-}
-
-
-
-    /* ===== SVG ICONS ===== */
-    function svgIcon(name, cls="w-5 h-5"){
-      switch(name){
-        case 'check': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9" stroke-opacity=".6"/></svg>`;
-        case 'pin': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-4.35 7-10a7 7 0 10-14 0c0 5.65 7 10 7 10z"/><circle cx="12" cy="11" r="2.5"/></svg>`;
-        case 'ban': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M5.6 18.4L18.4 5.6"/></svg>`;
-        case 'calendar': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 9h18"/></svg>`;
-        case 'clock': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l3 2"/></svg>`;
-        case 'unlock': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M9 11V7a3 3 0 116 0"/></svg>`;
-        case 'uturn': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 15l-3 3-3-3"/><path d="M12 18V7a4 4 0 00-8 0v5"/></svg>`;
-        case 'refresh': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11a8 8 0 10.8 3M20 11V5h-6"/></svg>`;
-        case 'plus': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>`;
-        case 'x': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M6 18L18 6"/></svg>`;
-        case 'eye': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
-        case 'p': return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9 16V8h4a3 3 0 110 6H9z"/></svg>`;
-        default: return `<svg class="${cls}" viewBox="0 0 24 24"></svg>`;
-      }
-    }
 
     /* ===== Estado ===== */
     let session = null;
@@ -230,8 +143,8 @@ function stopRealtime() {
     const formatFechaLarga = (iso) => { const [Y,M,D]=iso.split('-').map(Number); return new Date(Y,M-1,D).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); };
     const escapeHtml = (s) => (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 
-    /* === Chips compactos (icono siempre, texto sólo en ≥768px) === */
-    const chipBase = "only-icon inline-flex items-center gap-1 rounded-full ring-1 px-2 md:px-3 py-[6px] text-[11px] md:text-xs transition shadow-sm";
+    /* === Chips compactos para acciones === */
+    const chipBase = "inline-flex items-center gap-1 rounded-full ring-1 px-2 sm:px-3 py-[6px] text-[11px] sm:text-xs transition shadow-sm";
     const chipColors = {
       blue:   chipBase + " bg-blue-50 text-blue-700 ring-blue-200 hover:bg-blue-100",
       green:  chipBase + " bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100",
@@ -240,11 +153,12 @@ function stopRealtime() {
       gray:   chipBase + " bg-gray-50 text-gray-700 ring-gray-200 hover:bg-gray-100",
       orange: chipBase + " bg-orange-50 text-orange-700 ring-orange-200 hover:bg-orange-100",
     };
-    function chip(label, iconName, color, onclickJs){
+    function chip(label, emoji, color, onclickJs){
       const cls = chipColors[color] || chipColors.gray;
+      // En móvil solo emoji; en sm+ emoji + texto
       return `<button onclick="${onclickJs}" class="${cls}" title="${label}" aria-label="${label}">
-                ${svgIcon(iconName, "w-4 h-4 md:w-5 md:h-5")}
-                <span class="label">${label}</span>
+                <span class="text-base leading-none">${emoji}</span>
+                <span class="hidden sm:inline">${label}</span>
               </button>`;
     }
 
@@ -259,6 +173,7 @@ function stopRealtime() {
 
     /* ===== BD ===== */
     const db = {
+      // Reservas
       async getReservationsForMonth(year, month) {
         const from = `${year}-${String(month+1).padStart(2,'0')}-01`;
         const last = new Date(year, month+1, 0).getDate();
@@ -277,10 +192,14 @@ function stopRealtime() {
       async getReserva(date, plaza){ const { data } = await sb.from('reservations').select('user_id,status').eq('date',date).eq('plaza_code',plaza).maybeSingle(); return data||null; },
       async deleteReserva(date, plaza){ return await sb.from('reservations').delete().eq('date',date).eq('plaza_code',plaza).select(); },
 
+      // Eventos
       async logEvent(e){ const { error } = await sb.from('events').insert(e); if(error) console.error(error); },
       async getEventsLast7Days(){ const cutoff=new Date(Date.now()-7*24*60*60*1000).toISOString(); const { data }=await sb.from('events').select('*').gte('created_at',cutoff).order('created_at',{ascending:false}); return data||[]; },
 
+      // Perfiles
       async loadProfilesDict(){ const { data }=await sb.from('profiles').select('id,name,role,plaza_code,is_admin'); const dict={}; (data||[]).forEach(p=>dict[p.id]=p); return dict; },
+
+      // Admin list (vía RPC para obtener email)
       async loadProfilesWithEmail(){ const { data, error } = await sb.rpc('admin_profiles_with_email'); if(error){toast(error.message,'red'); return [];} return data||[]; },
       async updateProfile(p){ const { error } = await sb.from('profiles').update({ name:p.name, role:p.role, plaza_code:p.plaza_code||null, is_admin: !!p.is_admin }).eq('id',p.id); return { error }; },
     };
@@ -297,7 +216,6 @@ function stopRealtime() {
     });
 
     async function logout(){
-      logout()
       await sb.auth.signOut();
       session=null; currentProfile=null; profilesById={};
       document.getElementById('main-screen').classList.add('hidden');
@@ -310,14 +228,17 @@ function stopRealtime() {
       const { data:{ user } } = await sb.auth.getUser();
       if(!user){ toast("Sin sesión activa","red"); return; }
 
+      // Perfil requerido (no auto-crear)
       const { data:myp } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
       if(!myp){ toast("Tu cuenta no tiene perfil. Contacta con el administrador.","red"); await logout(); return; }
       currentProfile = myp;
 
       profilesById = await db.loadProfilesDict();
 
+      // Mostrar/ocultar botón admin
       document.getElementById('admin-button-row').classList.toggle('hidden', !isAdmin());
 
+      // Encabezado
       const welcome = document.getElementById('welcome-text');
       if ((currentProfile?.role || '').toLowerCase() === 'owner') {
         welcome.textContent = `${currentProfile.name} (Plaza: ${currentProfile.plaza_code || '—'})${isAdmin() ? ' · Admin' : ''}`;
@@ -325,6 +246,7 @@ function stopRealtime() {
         welcome.textContent = `${currentProfile.name}${isAdmin() ? ' (Admin)' : ''}`;
       }
 
+      // UI
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('main-screen').classList.remove('hidden');
 
@@ -332,11 +254,6 @@ function stopRealtime() {
       if (clockInterval) clearInterval(clockInterval);
       clockInterval = setInterval(updateDateTime, 1000);
       renderCalendar();
-
-      afterAuth()
-
-      /* pinta iconos de leyenda (móvil) */
-      document.querySelectorAll('[data-i]').forEach(el=>{ el.innerHTML = svgIcon(el.getAttribute('data-i')); });
     }
 
     /* ===== Header reloj + Salir ===== */
@@ -358,13 +275,6 @@ function stopRealtime() {
     function cambiarMes(inc){ mesActual+=inc; if(mesActual<0){mesActual=11;anioActual--;} else if(mesActual>11){mesActual=0;anioActual++;} renderCalendar(); }
     function irAlMesActual(){ const hoy=new Date(); mesActual=hoy.getMonth(); anioActual=hoy.getFullYear(); renderCalendar(); }
     window.cambiarMes=cambiarMes; window.irAlMesActual=irAlMesActual;
-
-    function estadoIcon(texto, iconName, extraClass=''){
-      return `<span class="only-icon flex items-center gap-1 justify-center ${extraClass}">
-                ${svgIcon(iconName, "w-4 h-4 md:w-5 md:h-5")}
-                <span class="label text-[11px] md:text-xs">${texto}</span>
-              </span>`;
-    }
 
     async function renderCalendar(){
       const container=document.getElementById('calendar-grid');
@@ -392,55 +302,45 @@ function stopRealtime() {
         let cl=`border p-2 sm:p-2 rounded shadow bg-white flex flex-col items-center justify-between min-h-[78px] sm:min-h-[90px]`;
         if(esHoy && !esFinDeSemana) cl+=' bg-blue-100 border-blue-400';
 
-        let estadoHTML="",accionesHTML="";
+        let estado="",accionesHTML="";
         if(esFinDeSemana){
-          cl+=' bg-gray-200';
-          estadoHTML = estadoIcon("Fin de semana","calendar","text-gray-500");
+          cl+=' bg-gray-200'; estado="<span class='text-gray-500 text-[11px] sm:text-xs'>Fin de semana</span>";
         }else if(esPasado){
-          cl+=' opacity-80';
-          estadoHTML = estadoIcon("Día pasado","clock","text-gray-400");
+          cl+=' opacity-80'; estado="<span class='text-gray-400 text-[11px] sm:text-xs'>Día pasado</span>";
         }else{
           if((currentProfile?.role||'').toLowerCase()==="owner"){
             const miPlaza=currentProfile.plaza_code;
             if(reservaDia[miPlaza]==='libre'){
-              estadoHTML = estadoIcon("LIBRE","check","text-green-600 font-semibold");
-              accionesHTML = chip("Cancelar liberación","uturn","amber", `cancelarLiberacion('${fStr}')`);
+              estado="<span class='text-green-600 font-semibold text-[11px] sm:text-xs'>LIBRE</span>";
+              accionesHTML = chip("Cancelar liberación","↩️","amber", `cancelarLiberacion('${fStr}')`);
             }else if(reservaDia[miPlaza] && reservaDia[miPlaza]!=='libre'){
               const reservador=profilesById[reservaDia[miPlaza]]?.name || 'N/A';
-              estadoHTML = `<div class="only-icon flex flex-col items-center leading-tight">
-                              ${estadoIcon("Reservada por","pin","text-purple-700")}
-                              <b class="label-block text-purple-700 text-[11px] md:text-xs">${reservador}</b>
-                            </div>`;
+              estado=`Reservada por<br><b class='text-purple-700 text-[11px] sm:text-xs'>${reservador}</b>`;
               if(fStr>=hoyStr && (fStr!==hoyStr || new Date().getHours()<7)){
-                accionesHTML = chip("Recuperar plaza","refresh","orange", `recuperarPlaza('${fStr}')`);
+                accionesHTML = chip("Recuperar plaza","♻️","orange", `recuperarPlaza('${fStr}')`);
               }
             }else{
-              estadoHTML = estadoIcon("Mi plaza","p","text-gray-500");
-              if(miPlaza) accionesHTML = chip("Liberar","unlock","green", `liberarPlaza('${fStr}')`);
+              estado=`<span class='text-gray-500 text-[11px] sm:text-xs'>Mi plaza</span>`;
+              if(miPlaza) accionesHTML = chip("Liberar","🔓","green", `liberarPlaza('${fStr}')`);
             }
           }else{
             const plazaReservada=Object.keys(reservaDia).find(plaza=>reservaDia[plaza]===currentProfile.id);
             if(plazaReservada){
               cl+=' bg-green-100 border-green-400';
-              estadoHTML = `<div class="only-icon flex flex-col items-center leading-tight">
-                              ${estadoIcon("¡Reservada!","pin","text-green-700")}
-                              <b class="label-block text-green-700 text-[11px] md:text-xs">${plazaReservada}</b>
-                            </div>`;
-              accionesHTML = chip("Cancelar","x","red", `cancelarReserva('${fStr}','${plazaReservada}')`);
+              estado=`¡Reservada!<br><b class='text-green-700 text-[11px] sm:text-xs'>${plazaReservada}</b>`;
+              accionesHTML = chip("Cancelar","✖️","red", `cancelarReserva('${fStr}','${plazaReservada}')`);
             }else{
               const disponibles=Object.keys(reservaDia).filter(plaza=>reservaDia[plaza]==='libre');
               if(disponibles.length===1){
-                estadoHTML = `<div class="only-icon flex flex-col items-center leading-tight">
-                                ${estadoIcon("Disponible","check","text-blue-700")}
-                                <b class="label-block text-blue-700 text-[11px] md:text-xs">${disponibles[0]}</b>
-                              </div>`;
-                accionesHTML = chip("Reservar","plus","blue", `reservar('${fStr}','${disponibles[0]}')`);
+                estado=`Disponible<br><b class='text-blue-700 text-[11px] sm:text-xs'>${disponibles[0]}</b>`;
+                accionesHTML = chip("Reservar","➕","blue", `reservar('${fStr}','${disponibles[0]}')`);
               }else if(disponibles.length>1){
-                estadoHTML = estadoIcon("Varias","eye","text-blue-700");
-                const plazasEncoded = encodeURIComponent(JSON.stringify(disponibles));
-                accionesHTML = chip("Ver opciones","eye","blue", `openModalInline('${fStr}','${plazasEncoded}')`);
+                estado=`<b class='text-blue-700 text-[11px] sm:text-xs'>${disponibles.length} plazas</b>`;
+                const plazasAttr=encodeURIComponent(JSON.stringify(disponibles));
+                accionesHTML = chip("Ver opciones","👁️","blue", `openModalFromAttr(this)` )
+                               .replace("this", `{dataset:{fecha:'${fStr}',plazas:'${plazasAttr}'}}`); // truco para inline
               }else{
-                estadoHTML = estadoIcon("No disponible","ban","text-gray-400");
+                estado="<span class='text-gray-400 text-[11px] sm:text-xs'>No disponible</span>";
               }
             }
           }
@@ -449,10 +349,10 @@ function stopRealtime() {
         cell.className=cl;
         cell.innerHTML=`<div class="flex flex-col items-center">
                           <strong class="text-sm sm:text-lg">${d}</strong>
-                          <div class='mt-1 text-center leading-snug'>${estadoHTML}</div>
+                          <p class='mt-1 text-center leading-snug'>${estado}</p>
                         </div>`;
         if(accionesHTML){
-          cell.innerHTML+=`<div class='w-full mt-1 flex items-center justify-center gap-1'>${accionesHTML}</div>`;
+          cell.innerHTML+=`<div class='w-full mt-1 flex items-center justify-center sm:justify-center gap-1'>${accionesHTML}</div>`;
         }
         container.appendChild(cell);
       }
@@ -484,8 +384,8 @@ function stopRealtime() {
       });
     }
     function closeModal(){ const m=document.getElementById('plaza-modal'); m.classList.add('hidden'); m.classList.remove('flex'); }
-    function openModalInline(fecha, plazasEncoded){ try{ const arr=JSON.parse(decodeURIComponent(plazasEncoded||'[]')); openModal(fecha, arr);}catch(e){ console.error('openModalInline',e); toast('No se pudo abrir la lista de plazas','red'); } }
-    window.openModalInline=openModalInline;
+    function openModalFromAttr(btn){ try{ const fecha=btn.dataset.fecha; const plazas=JSON.parse(decodeURIComponent(btn.dataset.plazas||'[]')); openModal(fecha, plazas);}catch(e){ console.error('openModalFromAttr',e); toast('No se pudo abrir la lista de plazas','red'); } }
+    window.openModalFromAttr=openModalFromAttr;
 
     /* ===== Acciones ===== */
     async function guardarYRenderizar(evt,msg,col){ if(evt) await db.logEvent(evt); toast(msg,col); closeModal(); renderCalendar(); }
