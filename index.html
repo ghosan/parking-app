@@ -85,6 +85,25 @@
         Aquí puedes <b>editar</b> los perfiles existentes (nombre, rol, plaza, admin).
       </p>
 
+      <section class="bg-gray-50 rounded-lg p-4 mb-4">
+        <h4 class="font-semibold mb-2">Alta rápida de usuario</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-6 gap-2">
+          <input id="new-email" type="email" placeholder="Email" class="border rounded px-2 py-1 sm:col-span-2">
+          <input id="new-name" type="text" placeholder="Nombre" class="border rounded px-2 py-1 sm:col-span-2">
+          <select id="new-role" class="border rounded px-2 py-1">
+            <option value="user">user</option>
+            <option value="owner">owner</option>
+          </select>
+          <input id="new-plaza" type="text" placeholder="Plaza (si owner)" class="border rounded px-2 py-1">
+          <label class="inline-flex items-center gap-2 sm:col-span-1">
+            <input id="new-admin" type="checkbox" class="h-4 w-4"><span class="text-xs">Admin</span>
+          </label>
+          <input id="new-password" type="password" placeholder="Contraseña temporal" class="border rounded px-2 py-1 sm:col-span-2">
+          <button onclick="createUserFromAdmin()" class="bg-green-600 hover:bg-green-700 text-white rounded px-3 py-2 sm:col-span-1">Crear</button>
+        </div>
+        <p class="text-[11px] text-gray-500 mt-2">Esta acción requiere la Edge Function <b>admin-users</b> (server role).</p>
+      </section>
+
       <section class="bg-gray-50 rounded-lg p-4">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
           <h4 class="font-semibold">Perfiles existentes</h4>
@@ -142,6 +161,7 @@
     let anioActual = new Date().getFullYear();
     let clockInterval = null;
     let swipeBound = false;
+    let resizeTimer = null;
 
     const isAdmin = () => !!currentProfile?.is_admin;
 
@@ -220,6 +240,15 @@
       async loadProfilesDict(){ const { data }=await sb.from('profiles').select('id,name,role,plaza_code,is_admin'); const dict={}; (data||[]).forEach(p=>dict[p.id]=p); return dict; },
       async loadProfilesWithEmail(){ const { data, error } = await sb.rpc('admin_profiles_with_email'); if(error){toast(error.message,'red'); return [];} return data||[]; },
       async updateProfile(p){ const { error } = await sb.from('profiles').update({ name:p.name, role:p.role, plaza_code:p.plaza_code||null, is_admin: !!p.is_admin }).eq('id',p.id); return { error }; },
+      async adminCreateUser(payload){
+        // payload: { email, password, name, role, plaza_code?, is_admin? }
+        const { data, error } = await sb.functions.invoke('admin-users', { body: { action:'create', actor_id: currentProfile?.id || null, ...payload } });
+        return { data, error };
+      },
+      async adminDeleteUser(userId){
+        const { data, error } = await sb.functions.invoke('admin-users', { body: { action:'delete', actor_id: currentProfile?.id || null, id:userId } });
+        return { data, error };
+      },
     };
 
     /* ===== Email (Edge Function) ===== */
@@ -341,7 +370,7 @@
               estado="<span class='text-green-600 font-semibold text-[11px] sm:text-xs'>LIBRE</span>";
               accionesHTML = chip("Cancelar liberación","↩️","amber", `cancelarLiberacion('${fStr}')`);
             }else if(reservaDia[miPlaza] && reservaDia[miPlaza]!=='libre'){
-              const reservador=profilesById[reservaDia[miPlaza]]?.name || 'N/A';
+              const reservador=escapeHtml(profilesById[reservaDia[miPlaza]]?.name || 'N/A');
               estado=`Reservada por<br><b class='text-purple-700 text-[11px] sm:text-xs'>${reservador}</b>`;
               // NUEVA regla: corte 22:00 del día anterior
               if (new Date() < recoverCutoffForDate(fStr)) {
@@ -365,8 +394,7 @@
               }else if(disponibles.length>1){
                 estado=`<b class='text-blue-700 text-[11px] sm:text-xs'>${disponibles.length} plazas</b>`;
                 const plazasAttr=encodeURIComponent(JSON.stringify(disponibles));
-                accionesHTML = chip("Ver opciones","👁️","blue", `openModalFromAttr(this)` )
-                               .replace("this", `{dataset:{fecha:'${fStr}',plazas:'${plazasAttr}'}}`);
+                accionesHTML = `<button onclick="openModalFromAttr(this)" data-fecha="${fStr}" data-plazas="${plazasAttr}" class="${chipColors.blue}" title="Ver opciones" aria-label="Ver opciones"><span class="text-base leading-none">👁️</span><span class="hidden sm:inline">Ver opciones</span></button>`;
               }else{
                 estado="<span class='text-gray-400 text-[11px] sm:text-xs'>No disponible</span>";
               }
@@ -472,9 +500,10 @@
       const {data}=await db.reservar(fecha,plaza,currentProfile.id);
       if(!data||!data.length) return toast("La plaza ya no está disponible","red");
       const owner=Object.values(profilesById).find(p=>p.role==='owner'&&p.plaza_code===plaza);
+      const ownerName = escapeHtml(owner?.name||'propietario');
       await guardarYRenderizar(
         { type:'RESERVADA', date:fecha, plaza_code: plaza, owner_id: owner?.id||'', user_id: currentProfile.id },
-        `Has reservado la plaza ${plaza} de ${owner?.name||'propietario'} para el ${formatFechaLarga(fecha)}.`,
+        `Has reservado la plaza ${plaza} de ${ownerName} para el ${formatFechaLarga(fecha)}.`,
         "blue"
       );
     }
@@ -484,9 +513,10 @@
       const {data}=await db.cancelarReserva(fecha,plaza,currentProfile.id);
       if(!data||!data.length) return toast("Nada que cancelar","yellow");
       const owner=Object.values(profilesById).find(p=>p.role==='owner'&&p.plaza_code===plaza);
+      const ownerName = escapeHtml(owner?.name||'propietario');
       await guardarYRenderizar(
         { type:'CANCELADA_USUARIO', date:fecha, plaza_code: plaza, owner_id: owner?.id||'', user_id: currentProfile.id },
-        `Has cancelado tu reserva de la plaza ${plaza} del ${formatFechaLarga(fecha)}.`,
+        `Has cancelado tu reserva de la plaza ${plaza} de ${ownerName} del ${formatFechaLarga(fecha)}.`,
         "yellow"
       );
     }
@@ -496,8 +526,8 @@
     async function renderNotifications(){
       const all=await db.getEventsLast7Days();
       const filtered = (currentProfile.role==='owner') ? all.filter(e=>e.owner_id===currentProfile.id) : all.filter(e=>e.user_id===currentProfile.id);
-      const ownerName=id=>profilesById[id]?.name||'propietario';
-      const userName=id=>profilesById[id]?.name||'usuario';
+      const ownerName=id=>escapeHtml(profilesById[id]?.name||'propietario');
+      const userName=id=>escapeHtml(profilesById[id]?.name||'usuario');
       const rows = filtered.map(e=>{
         const fechaSimple=new Date(e.date).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
         let icon='ℹ️', cls='border-gray-400', text='Evento desconocido.';
@@ -544,8 +574,38 @@
               <span class="text-xs">Admin</span>
             </label>
           </td>
-          <td class="px-3 py-2 text-right"><button class="px-3 py-1 rounded bg-blue-600 text-white" onclick="saveProfile('${p.id}')">Guardar</button></td>
+          <td class="px-3 py-2 text-right"><button class="px-3 py-1 rounded bg-blue-600 text-white mr-2" onclick="saveProfile('${p.id}')">Guardar</button><button class="px-3 py-1 rounded bg-rose-600 text-white" onclick="deleteUserFromAdmin('${p.id}')">Borrar</button></td>
         </tr>`).join('');
+    }
+    async function createUserFromAdmin(){
+      const email=document.getElementById('new-email').value.trim();
+      const password=document.getElementById('new-password').value.trim();
+      const name=document.getElementById('new-name').value.trim();
+      const role=document.getElementById('new-role').value;
+      const plaza=document.getElementById('new-plaza').value.trim();
+      const isAdmin=document.getElementById('new-admin').checked;
+      if(!email || !password || !name){ return toast('Email, contraseña y nombre son obligatorios','red'); }
+      if(role==='owner' && !plaza){ return toast("Para 'owner' indica plaza","red"); }
+      const { error } = await db.adminCreateUser({ email, password, name, role, plaza_code: plaza||null, is_admin: isAdmin });
+      if(error){ return toast(error.message||'No se pudo crear el usuario','red'); }
+      toast('Usuario creado','green');
+      document.getElementById('new-email').value='';
+      document.getElementById('new-password').value='';
+      document.getElementById('new-name').value='';
+      document.getElementById('new-plaza').value='';
+      document.getElementById('new-admin').checked=false;
+      await renderAdminProfiles();
+      profilesById = await db.loadProfilesDict();
+      renderCalendar();
+    }
+    async function deleteUserFromAdmin(userId){
+      if(!confirm('¿Seguro que quieres borrar este usuario?')) return;
+      const { error } = await db.adminDeleteUser(userId);
+      if(error){ return toast(error.message||'No se pudo borrar','red'); }
+      toast('Usuario borrado','yellow');
+      await renderAdminProfiles();
+      profilesById = await db.loadProfilesDict();
+      renderCalendar();
     }
     async function saveProfile(id){
       const inputs=document.querySelectorAll(`[data-id="${id}"]`);
@@ -560,11 +620,12 @@
       else{
         toast("Perfil guardado","green");
         await renderAdminProfiles();
+        profilesById = await db.loadProfilesDict();
         if(currentProfile.id===id){
           currentProfile.role=obj.role; currentProfile.plaza_code=obj.plaza_code; currentProfile.is_admin=!!obj.is_admin;
           document.getElementById('admin-button-row').classList.toggle('hidden', !isAdmin());
-          renderCalendar();
         }
+        renderCalendar();
       }
     }
     window.saveProfile=saveProfile;
@@ -583,9 +644,10 @@
     });
 
     /* ===== Inicio ===== */
-    window.addEventListener('resize', ()=>renderCalendar());
+    window.addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(renderCalendar,150); });
     document.getElementById('plaza-modal').addEventListener('click', e=>{ if(e.target.id==='plaza-modal') closeModal(); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) renderCalendar(); });
+    window.addEventListener('beforeunload', ()=>{ stopSync(); if(clockInterval) clearInterval(clockInterval); });
   </script>
 </body>
 </html>
