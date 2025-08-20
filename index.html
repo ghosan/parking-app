@@ -6,8 +6,9 @@
   <title>Gestor de Reservas de Parking</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-gray-100 text-gray-800 p-2 sm:p-4 font-sans">
+<body class="bg-white text-gray-800 p-2 sm:p-4 font-sans">
   <div id="app" class="max-w-6xl mx-auto">
     <h1 class="text-2xl sm:text-3xl font-bold text-center mb-4">📅 Gestor de plazas de parking</h1>
 
@@ -188,7 +189,7 @@
     const escapeHtml = (s) => (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 
     /* === Chips compactos para acciones === */
-    const chipBase = "inline-flex items-center gap-1 rounded-full ring-1 px-2 sm:px-3 py-[6px] text-[11px] sm:text-xs transition shadow-sm";
+    const chipBase = "inline-flex items-center justify-center rounded-full ring-1 transition shadow-sm w-9 h-9 sm:w-10 sm:h-10";
     const chipColors = {
       blue:   chipBase + " bg-blue-50 text-blue-700 ring-blue-200 hover:bg-blue-100",
       green:  chipBase + " bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100",
@@ -200,8 +201,7 @@
     function chip(label, emoji, color, onclickJs){
       const cls = chipColors[color] || chipColors.gray;
       return `<button onclick="${onclickJs}" class="${cls}" title="${label}" aria-label="${label}">
-                <span class="text-base leading-none">${emoji}</span>
-                <span class="hidden sm:inline">${label}</span>
+                <span class="text-lg sm:text-xl leading-none">${emoji}</span>
               </button>`;
     }
 
@@ -394,7 +394,7 @@
               }else if(disponibles.length>1){
                 estado=`<b class='text-blue-700 text-[11px] sm:text-xs'>${disponibles.length} plazas</b>`;
                 const plazasAttr=encodeURIComponent(JSON.stringify(disponibles));
-                accionesHTML = `<button onclick="openModalFromAttr(this)" data-fecha="${fStr}" data-plazas="${plazasAttr}" class="${chipColors.blue}" title="Ver opciones" aria-label="Ver opciones"><span class="text-base leading-none">👁️</span><span class="hidden sm:inline">Ver opciones</span></button>`;
+                accionesHTML = `<button onclick="openModalFromAttr(this)" data-fecha="${fStr}" data-plazas="${plazasAttr}" class="${chipColors.blue}" title="Ver opciones" aria-label="Ver opciones"><span class="text-lg sm:text-xl leading-none">👁️</span></button>`;
               }else{
                 estado="<span class='text-gray-400 text-[11px] sm:text-xs'>No disponible</span>";
               }
@@ -649,5 +649,6 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) renderCalendar(); });
     window.addEventListener('beforeunload', ()=>{ stopSync(); if(clockInterval) clearInterval(clockInterval); });
   </script>
+<script type="module" src="/index.tsx"></script>
 </body>
 </html>
